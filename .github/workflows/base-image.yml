@@ -1,0 +1,34 @@
+name: Build and Push Base Image
+
+on:
+  workflow_dispatch:  # 允许手动在GitHub界面触发
+  schedule:
+    - cron: '0 0 * * 0'  # 每周日00:00自动触发
+
+env:
+  REGISTRY: crpi-xxxx.cn-shanghai.personal.cr.aliyuncs.com  # 从阿里云获取的地址
+  NAMESPACE: my-project    # 您在阿里云创建的命名空间名称
+  BASE_IMAGE_NAME: base-image  # 您想要的镜像仓库名称
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # 使用最新版Ubuntu运行
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Login to Aliyun Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+          
+      - name: Build and push base image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.base
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ BASE_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ BASE_IMAGE_NAME }}:${{ github.sha }} 

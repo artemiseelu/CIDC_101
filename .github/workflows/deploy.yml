@@ -1,0 +1,78 @@
+name: Build and Deploy CIDC
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: crpi-0s5agc4fdmq2oyj4.cn-hangzhou.personal.cr.aliyuncs.com
+  NAMESPACE: yice_docker
+  BASE_IMAGE_NAME: torch_test
+  APP_IMAGE_NAME: cidc-app
+  SERVER_IP: 101.37.37.132
+  DEPLOY_PATH: /root/workspace/CIDC_101
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    # 检出代码
+    - uses: actions/checkout@v3
+    
+    # 登录到阿里云容器镜像服务
+    - name: Login to Aliyun Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.ALIYUN_USERNAME }}
+        password: ${{ secrets.ALIYUN_PASSWORD }}
+
+    # 构建并推送应用镜像
+    - name: Build and push app image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: Dockerfile
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest
+          ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+        push: true
+        pull: true
+        
+    # 设置SSH密钥
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        
+    # 部署到远程服务器
+    - name: Deploy to server
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
+        scp docker-compose.yml root@${{ env.SERVER_IP }}:${{ env.DEPLOY_PATH }}/
+        ssh root@${{ env.SERVER_IP }} "cd ${{ env.DEPLOY_PATH }} && \
+          echo 'REGISTRY=${{ env.REGISTRY }}' > .env && \
+          echo 'NAMESPACE=${{ env.NAMESPACE }}' >> .env && \
+          echo 'BASE_IMAGE_NAME=${{ env.BASE_IMAGE_NAME }}' >> .env && \
+          echo 'APP_IMAGE_NAME=${{ env.APP_IMAGE_NAME }}' >> .env && \
+          echo 'GITHUB_SHA=${{ github.sha }}' >> .env && \
+          docker-compose pull && \
+          docker-compose down -v && \
+          docker-compose up -d"
+
+    # 部署成功通知
+    - name: Deployment notification
+      if: success()
+      run: |
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -d "{\"text\":\"🎉 CIDC 部署成功！\n分支: ${{ github.ref }}\n提交: ${{ github.sha }}\n时间: $(date '+%Y-%m-%d %H:%M:%S')\"}" \
+          ${{ secrets.NOTIFICATION_WEBHOOK }} 
