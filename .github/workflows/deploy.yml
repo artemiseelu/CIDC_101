@@ -108,10 +108,10 @@ jobs:
 
     # 部署成功通知
     - name: Deployment notification
-      if: success() && secrets.NOTIFICATION_WEBHOOK != ''
+      if: success()
       run: |
         echo "🎉 Deployment successful!"
-        if [ ! -z "${{ secrets.NOTIFICATION_WEBHOOK }}" ]; then
+        if [ -n "${{ secrets.NOTIFICATION_WEBHOOK }}" ]; then
           curl -X POST \
             -H "Content-Type: application/json" \
             -d "{\"text\":\"🎉 CIDC 部署成功！\n分支: ${{ github.ref }}\n提交: ${{ github.sha }}\n时间: $(date '+%Y-%m-%d %H:%M:%S')\"}" \
