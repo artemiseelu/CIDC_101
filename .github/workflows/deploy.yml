@@ -13,10 +13,6 @@ env:
   APP_IMAGE_NAME: cidc-app
   SERVER_IP: 101.37.37.132
   DEPLOY_PATH: /root/workspace/CIDC_101
-  DOCKER_BUILDKIT: 1
-  COMPOSE_HTTP_TIMEOUT: 180
-  DOCKER_CLIENT_TIMEOUT: 180
-  DOCKER_TIMEOUT: 180
 
 permissions:
   contents: read
@@ -38,27 +34,28 @@ jobs:
         username: ${{ secrets.ALIYUN_USERNAME }}
         password: ${{ secrets.ALIYUN_PASSWORD }}
 
-    # 设置 Docker Buildx
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-      with:
-        driver: docker-container
-        driver-opts: |
-          network=host
-
     # 构建并推送应用镜像
     - name: Build and push app image
       uses: docker/build-push-action@v4
       with:
         context: .
         file: Dockerfile
+        push: true
         tags: |
           ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest
           ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
-        push: true
-        pull: true
-        platforms: linux/amd64
-        builder: default
+      
+    # 如果构建失败，重试一次
+    - name: Retry build and push on failure
+      if: failure()
+      run: |
+        docker build -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest \
+                    -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }} .
+        for i in 1 2 3; do
+          docker push ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest && \
+          docker push ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }} && break || \
+          echo "Push failed, retrying in 30 seconds..." && sleep 30
+        done
         
     # 设置SSH密钥
     - name: Set up SSH
