@@ -1,0 +1,27 @@
+FROM nvidia/cuda:11.7.1-cudnn8-runtime-ubuntu20.04
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# 安装Python
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.8 \
+        python3.8-dev \
+        python3.8-venv \
+        python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.8 /usr/bin/python
+
+# 配置pip镜像源并安装PyTorch
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/ && \
+    pip config set install.trusted-host pypi.tuna.tsinghua.edu.cn && \
+    pip install --no-cache-dir torch==2.0.1+cu117 torchvision==0.15.2+cu117 && \
+    rm -rf /root/.cache/pip/*
+
+# 创建共享目录
+VOLUME /usr/local/lib/python3.8/site-packages
+
+CMD ["sleep", "infinity"] 

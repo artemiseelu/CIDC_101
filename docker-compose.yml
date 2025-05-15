@@ -1,0 +1,33 @@
+version: '3.3'
+
+services:
+  base-lib:
+    image: local-base-image:latest
+    volumes:
+      - python-libs:/usr/local/lib/python3.9/site-packages
+    command: >
+      bash -c "
+        if [ ! -d /usr/local/lib/python3.9/site-packages/torch ]; then
+          cp -r /usr/local/lib/python3.9/site-packages.bak/* /usr/local/lib/python3.9/site-packages/
+        fi && sleep infinity"
+    healthcheck:
+      test: ["CMD", "test", "-d", "/usr/local/lib/python3.9/site-packages/torch"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - python-libs:/opt/base-packages:ro
+    environment:
+      - PYTHONPATH=/usr/local/lib/python3.9/site-packages:/opt/base-packages
+    depends_on:
+      - base-lib
+
+volumes:
+  python-libs: 

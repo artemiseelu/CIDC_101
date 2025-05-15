@@ -18,18 +18,20 @@
 
 在项目根目录执行：
 
-    docker build -t local-base-image:latest -f Dockerfile.base .
+    docker build  -t local-base-image:latest -f Dockerfile.base .
 
 此步骤会：
 - 安装 PyTorch 等基础依赖
 - 创建基础运行环境
 - 设置必要的系统配置
 
+docker images local-base-image:latest my-app:latest
+
 ### 2. 构建应用镜像
 
 在项目根目录执行：
 
-    docker build -t my-app:latest .
+    docker build  -t my-app:latest .
 
 此步骤会：
 - 基于基础镜像构建
@@ -125,3 +127,14 @@
 ## 许可证
 
 MIT 
+
+
+# 重新构建基础镜像
+docker build -t local-base-image:latest -f Dockerfile.base .
+docker build --no-cache -t local-base-image:latest -f Dockerfile.base .
+DOCKER_BUILDKIT=1 docker build --progress=plain -t local-base-image:latest -f Dockerfile.base .
+
+# 检查一下torch是否被正确安装
+
+# 重新启动服务
+docker-compose up -d

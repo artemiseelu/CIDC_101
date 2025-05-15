@@ -2,6 +2,7 @@ from fastapi import FastAPI
 import torch  # 验证基础镜像中的依赖
 import numpy as np
 import uvicorn
+from ultralytics import YOLO
 
 app = FastAPI()
 
