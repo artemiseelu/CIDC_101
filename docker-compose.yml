@@ -7,14 +7,16 @@ services:
       - python-libs:/usr/local/lib/python3.9/site-packages
     command: >
       bash -c "
-        if [ ! -d /usr/local/lib/python3.9/site-packages/torch ]; then
-          cp -r /usr/local/lib/python3.9/site-packages.bak/* /usr/local/lib/python3.9/site-packages/
-        fi && sleep infinity"
+        cp -r /usr/local/lib/python3.9/site-packages.bak/* /usr/local/lib/python3.9/site-packages/ || true;
+        sleep infinity"
     healthcheck:
       test: ["CMD", "test", "-d", "/usr/local/lib/python3.9/site-packages/torch"]
       interval: 10s
-      timeout: 5s
-      retries: 3
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      - COMPOSE_HTTP_TIMEOUT=200
 
   app:
     image: ${REGISTRY}/${NAMESPACE}/${APP_IMAGE_NAME}:${GITHUB_SHA:-latest}
@@ -24,6 +26,7 @@ services:
       - python-libs:/opt/base-packages:ro
     environment:
       - PYTHONPATH=/usr/local/lib/python3.9/site-packages:/opt/base-packages
+      - COMPOSE_HTTP_TIMEOUT=200
     depends_on:
       - base-lib
 

@@ -59,11 +59,13 @@ jobs:
         ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
         scp docker-compose.yml root@${{ env.SERVER_IP }}:${{ env.DEPLOY_PATH }}/
         ssh root@${{ env.SERVER_IP }} "cd ${{ env.DEPLOY_PATH }} && \
+          export COMPOSE_HTTP_TIMEOUT=200 && \
           echo 'REGISTRY=${{ env.REGISTRY }}' > .env && \
           echo 'NAMESPACE=${{ env.NAMESPACE }}' >> .env && \
           echo 'BASE_IMAGE_NAME=${{ env.BASE_IMAGE_NAME }}' >> .env && \
           echo 'APP_IMAGE_NAME=${{ env.APP_IMAGE_NAME }}' >> .env && \
           echo 'GITHUB_SHA=${{ github.sha }}' >> .env && \
+          echo 'COMPOSE_HTTP_TIMEOUT=200' >> .env && \
           docker-compose pull && \
           docker-compose down -v && \
           docker-compose up -d"
