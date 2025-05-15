@@ -13,6 +13,7 @@ env:
   APP_IMAGE_NAME: cidc-app
   SERVER_IP: 101.37.37.132
   DEPLOY_PATH: /root/workspace/CIDC_101
+  REGION_ID: cn-hangzhou
 
 permissions:
   contents: read
@@ -44,17 +45,19 @@ jobs:
         tags: |
           ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest
           ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+        pull: true
+        network: host
       
-    # 如果构建失败，重试一次
+    # 如果构建失败，重试一次，使用更稳定的网络设置
     - name: Retry build and push on failure
       if: failure()
       run: |
-        docker build -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest \
+        docker build --network host -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest \
                     -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }} .
         for i in 1 2 3; do
           docker push ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest && \
           docker push ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }} && break || \
-          echo "Push failed, retrying in 30 seconds..." && sleep 30
+          echo "Push failed, retrying in 30 seconds (attempt $i of 3)..." && sleep 30
         done
         
     # 设置SSH密钥
@@ -63,27 +66,54 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
         
-    # 部署到远程服务器
+    # 部署到远程服务器，添加SSH连接保持设置
     - name: Deploy to server
       run: |
         mkdir -p ~/.ssh
         ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
+        # 添加SSH配置以保持连接
+        echo "Host ${{ env.SERVER_IP }}
+          ServerAliveInterval 60
+          ServerAliveCountMax 5
+          TCPKeepAlive yes" > ~/.ssh/config
         scp docker-compose.yml root@${{ env.SERVER_IP }}:${{ env.DEPLOY_PATH }}/
-        ssh root@${{ env.SERVER_IP }} "cd ${{ env.DEPLOY_PATH }} && \
+        ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=5 root@${{ env.SERVER_IP }} "cd ${{ env.DEPLOY_PATH }} && \
           echo 'REGISTRY=${{ env.REGISTRY }}' > .env && \
           echo 'NAMESPACE=${{ env.NAMESPACE }}' >> .env && \
           echo 'BASE_IMAGE_NAME=${{ env.BASE_IMAGE_NAME }}' >> .env && \
           echo 'APP_IMAGE_NAME=${{ env.APP_IMAGE_NAME }}' >> .env && \
           echo 'GITHUB_SHA=${{ github.sha }}' >> .env && \
-          COMPOSE_HTTP_TIMEOUT=180 docker-compose pull && \
+          # 检查 base-lib 镜像是否存在
+          if ! docker images | grep -q '${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.BASE_IMAGE_NAME }}:v1'; then \
+            echo 'Base image not found, pulling...' && \
+            COMPOSE_HTTP_TIMEOUT=180 docker-compose pull base-lib; \
+          else \
+            echo 'Base image exists, skipping pull'; \
+          fi && \
+          # 只拉取应用镜像
+          COMPOSE_HTTP_TIMEOUT=180 docker-compose pull app && \
           COMPOSE_HTTP_TIMEOUT=180 docker-compose down -v && \
-          COMPOSE_HTTP_TIMEOUT=180 docker-compose up -d"
+          COMPOSE_HTTP_TIMEOUT=180 docker-compose up -d && \
+          # 等待服务启动并检查日志
+          echo 'Waiting for services to start...' && \
+          sleep 10 && \
+          echo 'Checking app logs...' && \
+          docker-compose logs --tail=50 app && \
+          # 检查容器状态
+          if [ $(docker-compose ps -q app | xargs docker inspect -f '{{.State.Running}}') != 'true' ]; then \
+            echo 'Error: App container is not running' && \
+            docker-compose logs app && \
+            exit 1; \
+          fi"
 
     # 部署成功通知
     - name: Deployment notification
-      if: success()
+      if: success() && secrets.NOTIFICATION_WEBHOOK != ''
       run: |
-        curl -X POST \
-          -H "Content-Type: application/json" \
-          -d "{\"text\":\"🎉 CIDC 部署成功！\n分支: ${{ github.ref }}\n提交: ${{ github.sha }}\n时间: $(date '+%Y-%m-%d %H:%M:%S')\"}" \
-          ${{ secrets.NOTIFICATION_WEBHOOK }} 
+        echo "🎉 Deployment successful!"
+        if [ ! -z "${{ secrets.NOTIFICATION_WEBHOOK }}" ]; then
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"🎉 CIDC 部署成功！\n分支: ${{ github.ref }}\n提交: ${{ github.sha }}\n时间: $(date '+%Y-%m-%d %H:%M:%S')\"}" \
+            ${{ secrets.NOTIFICATION_WEBHOOK }}
+        fi 
