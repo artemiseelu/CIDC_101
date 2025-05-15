@@ -2,7 +2,7 @@ version: '3.3'
 
 services:
   base-lib:
-    image: local-base-image:latest
+    image: ${REGISTRY}/${NAMESPACE}/${BASE_IMAGE_NAME}:${GITHUB_SHA:-latest}
     volumes:
       - python-libs:/usr/local/lib/python3.9/site-packages
     command: >
@@ -17,9 +17,7 @@ services:
       retries: 3
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${REGISTRY}/${NAMESPACE}/${APP_IMAGE_NAME}:${GITHUB_SHA:-latest}
     ports:
       - "8000:8000"
     volumes:
