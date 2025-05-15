@@ -14,9 +14,9 @@ env:
   SERVER_IP: 101.37.37.132
   DEPLOY_PATH: /root/workspace/CIDC_101
   DOCKER_BUILDKIT: 1
-  COMPOSE_HTTP_TIMEOUT: 200
-  DOCKER_CLIENT_TIMEOUT: 200
-  DOCKER_TIMEOUT: 200
+  COMPOSE_HTTP_TIMEOUT: 180
+  DOCKER_CLIENT_TIMEOUT: 180
+  DOCKER_TIMEOUT: 180
 
 permissions:
   contents: read
@@ -38,15 +38,11 @@ jobs:
         username: ${{ secrets.ALIYUN_USERNAME }}
         password: ${{ secrets.ALIYUN_PASSWORD }}
 
-    # 设置 QEMU
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-
     # 设置 Docker Buildx
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
       with:
-        platforms: linux/amd64
+        driver: docker-container
         driver-opts: |
           network=host
 
@@ -61,10 +57,7 @@ jobs:
           ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
         push: true
         pull: true
-        provenance: false
         platforms: linux/amd64
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
         builder: default
         
     # 设置SSH密钥
@@ -80,16 +73,14 @@ jobs:
         ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
         scp docker-compose.yml root@${{ env.SERVER_IP }}:${{ env.DEPLOY_PATH }}/
         ssh root@${{ env.SERVER_IP }} "cd ${{ env.DEPLOY_PATH }} && \
-          export COMPOSE_HTTP_TIMEOUT=200 && \
           echo 'REGISTRY=${{ env.REGISTRY }}' > .env && \
           echo 'NAMESPACE=${{ env.NAMESPACE }}' >> .env && \
           echo 'BASE_IMAGE_NAME=${{ env.BASE_IMAGE_NAME }}' >> .env && \
           echo 'APP_IMAGE_NAME=${{ env.APP_IMAGE_NAME }}' >> .env && \
           echo 'GITHUB_SHA=${{ github.sha }}' >> .env && \
-          echo 'COMPOSE_HTTP_TIMEOUT=200' >> .env && \
-          docker-compose pull && \
-          docker-compose down -v && \
-          docker-compose up -d"
+          COMPOSE_HTTP_TIMEOUT=180 docker-compose pull && \
+          COMPOSE_HTTP_TIMEOUT=180 docker-compose down -v && \
+          COMPOSE_HTTP_TIMEOUT=180 docker-compose up -d"
 
     # 部署成功通知
     - name: Deployment notification
